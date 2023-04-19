@@ -1,0 +1,23 @@
+@startuml
+[week1_sup] as R
+[worker_pool_sup] as PS
+[reader_sup] as RS
+[load_balancer] as LB
+[profanity_filter] as PF
+[sentiment_score] as SS
+[worker_printer] as WP1
+[worker_printer] as WP2
+[worker_printer] as WP3
+
+R --> RS
+R --> PS
+R --> LB
+R --> PF
+R --> SS
+PS--> WP1
+PS--> WP2
+PS--> WP3
+
+RS --> [reader1]
+RS --> [reader2]
+@enduml

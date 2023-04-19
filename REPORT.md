@@ -346,6 +346,87 @@ match_words(Dictionary, OriginalString) when is_map(Dictionary) ->
 ```
 
 To filter the words, I made an actor that initializes a map of badwords from a txt file named badwords.txt and all the printers send their text to this actor to filter their messages.
+## Week 4
+
+Supervision Tree Diagram:
+
+![Supervision Tree Diagram](diagrams/week4_sup.png)
+
+Message Flow Diagram:
+
+![Message Flow Diagram](diagrams/week4_msg.png)
+
+### Task 1 -- **Minimal Task**
+
+Continue your Worker actor. Besides printing out the redacted tweet text,
+the Worker actor must also calculate two values: the Sentiment Score and the Engagement
+Ratio of the tweet. To compute the Sentiment Score per tweet you should calculate the mean
+of emotional scores of each word in the tweet text. A map that links words with their scores is
+provided as an endpoint in the Docker container. If a word cannot be found in the map, it’s
+emotional score is equal to 0. The Engagement Ratio should be calculated as follows:
+
+$
+engagement\_ratio = \frac{\#favourites + \#retweets}{\#followers}
+$
+
+```erlang
+-module(sentiment_score).
+
+-export([start/0]).
+
+loop(MapOfEmotions) ->
+  receive
+    {Params, CallerPid} ->
+      {FilteredText, EngagementScore} = Params,
+      TweetWords = string:split(binary_to_list(FilteredText), " ", all),
+      Scores =
+        lists:map(fun(Word) when is_integer(Word) =:= false ->
+                     LowerWord = string:to_lower(Word),
+                     get_score(LowerWord, MapOfEmotions)
+                  end,
+                  TweetWords),
+      SentimentScore = lists:sum(Scores) / length(Scores),
+      CallerPid ! {sentiment_calculated, {FilteredText, EngagementScore, SentimentScore}},
+      loop(MapOfEmotions)
+  end.
+
+-module(worker_printer).
+
+-export([start/0]).
+
+start() ->
+    Pid = spawn_link(fun() -> receive_loop() end),
+    {ok, Pid}.
+
+receive_loop() ->
+    receive
+        {sentiment_calculated, Params} -> 
+            {FilteredText, EngagementScore, SentimentScore} = Params,
+            io:format("Worker: ~p; Sentiment Score: ~p; Engagement Score: ~p; Text: ~s~n", [self(), SentimentScore, EngagementScore, binary_to_list(FilteredText)]),
+            timer:sleep(rand:uniform(45) + 5),
+            receive_loop();
+        {filtered, Params} ->
+            sentiment ! {Params, self()},
+            receive_loop();
+        Message when Message /= <<"event: \"message\"">> ->
+            case string:find(Message, "panic") of
+                nomatch ->
+                    [_, Json] = string:split(Message, ": "),
+                    TweetMap = jsx:decode(Json),
+                    #{<<"message">> := #{<<"tweet">> := #{<<"text">> := TweetText}}} = TweetMap,
+                    #{<<"message">> := #{<<"tweet">> := #{<<"favorite_count">> := Favorites}}} = TweetMap,
+                    #{<<"message">> := #{<<"tweet">> := #{<<"retweet_count">> := Retweets}}} = TweetMap,
+                    #{<<"message">> := #{<<"tweet">> := #{<<"user">> := #{<<"followers_count">> := Followers}}}} = TweetMap,
+                    EngagementScore = (Favorites + Retweets)/Followers,
+                    filter ! {TweetText, EngagementScore, self()},
+                    receive_loop();
+                _ ->
+                    io:format("Worker: ~p, Kill message received (panic) ~n", [self()])
+            end
+    end.
+```
+
+Engagement score is calculated inside the worker printer and the sentiment score is calculated in a separate actor that has the map of the emotion score for each word and all of this is printed in console.
 
 ## Bibliography
 
