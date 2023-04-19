@@ -481,7 +481,94 @@ print_tweets(Batch) ->
 
 If the filtered text is different than the original tweet text then it is sent to the batcher along with other params. When the batch size is 5 in this case, it will print all the tweets and reset the batch.
 
+## Week 6
 
+Supervision Tree Diagram:
+
+![Supervision Tree Diagram](diagrams/week6_sup.png)
+
+Message Flow Diagram:
+
+![Message Flow Diagram](diagrams/week6_msg.png)
+
+### Task 1 -- **Minimal Task**
+
+Create a database that would store the tweets processed by your system.
+
+```erlang
+-module(week6_app).
+
+-behaviour(application).
+
+-export([start/2, stop/1]).
+
+start(_StartType, _StartArgs) ->
+  start_ets(),
+  week6_sup:start_link().
+
+stop(_State) ->
+  ok.
+
+  start_ets() ->
+    ets:new(tweets, [duplicate_bag, public, named_table]),
+    ets:new(batched_tweets, [duplicate_bag, public, named_table]).
+```
+
+```erlang
+-module(worker_printer).
+...
+case IsRedacted of
+        false ->
+        io:format("Worker: ~p; Sentiment Score: ~p; Engagement Ratio: ~p; Filtered: ~p Text: "
+                  "~s~n",
+                  [self(), SentimentScore, EngagementRatio, IsRedacted, binary_to_list(FilteredText)]),
+        ets:insert_new(tweets, Params);
+        true ->
+          batcher ! {batch, Params}
+      end,
+...
+```
+
+I created an ETS database to store the tweets.
+### Task 2 -- **Minimal Task**
+
+Continue your Batcher actor. Instead of printing the batches of tweets, the
+actor should now send them to the database, which will persist them.
+
+```erlang
+-module(batcher).
+
+-export([start/1]).
+
+start(BatchSize) ->
+  Pid = spawn_link(fun() -> loop(BatchSize, []) end),
+  register(batcher, Pid),
+  {ok, Pid}.
+
+loop(BatchSize, Batch) ->
+  case length(Batch) == BatchSize of
+    true ->
+      ets:insert_new(batched_tweets, Batch),
+      loop(BatchSize, []);
+    false ->
+      receive
+        {batch, Params} ->
+          NewBatch = [Params | Batch],
+          loop(BatchSize, NewBatch)
+      end
+  end.
+
+```
+
+For the batcher, I just insert the batches in the db instead of printing them.
+
+## Conclusion
+
+In conclusion, compared to the previous Project, all weeks for this one aimed to build upon the same application. At the end of the Project, a more or less functional stream processing system was implemented.
+
+In addition, 2 types of diagrams were created for each week. The Message Flow Diagram describes the message exchange between actors of the system whereas the Supervision Tree Diagram analyzes the monitor structures of the application.
+
+Overall, this Project is a complex one if all the tasks are done, including Main and Bonus tasks but with only Minimal tasks, the Project can be done very easily. Nevertheless, even from the Minimal tasks something useful can be learned.
 ## Bibliography
 
 [https://www.erlang.org/doc/design_principles/sup_princ.html](https://www.erlang.org/doc/design_principles/sup_princ.html)
