@@ -1,0 +1,14 @@
+{application, week5,
+ [{description, "PTR lab2 week5"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {week5_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    shotgun
+   ]},
+  {env,[]},
+  {modules, []},
+  {links, []}
+ ]}.

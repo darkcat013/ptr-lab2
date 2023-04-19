@@ -365,9 +365,9 @@ of emotional scores of each word in the tweet text. A map that links words with 
 provided as an endpoint in the Docker container. If a word cannot be found in the map, it’s
 emotional score is equal to 0. The Engagement Ratio should be calculated as follows:
 
-$
-engagement\_ratio = \frac{\#favourites + \#retweets}{\#followers}
-$
+$$
+engagement\_ratio = \frac{ favourites + retweets }{ followers}
+$$
 
 ```erlang
 -module(sentiment_score).
@@ -427,6 +427,60 @@ receive_loop() ->
 ```
 
 Engagement score is calculated inside the worker printer and the sentiment score is calculated in a separate actor that has the map of the emotion score for each word and all of this is printed in console.
+
+## Week 5
+
+Supervision Tree Diagram:
+
+![Supervision Tree Diagram](diagrams/week5_sup.png)
+
+Message Flow Diagram:
+
+![Message Flow Diagram](diagrams/week5_msg.png)
+
+### Task 1 -- **Minimal Task**
+
+Create an actor that would collect the redacted tweets from Workers and
+would print them in batches. Instead of printing the tweets, the Worker should now send them
+to the Batcher, which then prints them. The batch size should be parametrizable.
+
+```erlang
+-module(batcher).
+
+-export([start/1]).
+
+start(BatchSize) ->
+  Pid = spawn_link(fun() -> loop(BatchSize, []) end),
+  register(batcher, Pid),
+  {ok, Pid}.
+
+loop(BatchSize, Batch) ->
+  case length(Batch) == BatchSize of
+    true ->
+      print_tweets(lists:reverse(Batch)),
+      loop(BatchSize, []);
+    false ->
+      receive
+        {batch, Params} ->
+          NewBatch = [Params | Batch],
+          loop(BatchSize, NewBatch)
+      end
+  end.
+
+print_tweets([]) ->
+  ok;
+print_tweets(Batch) ->
+  [Params | NewBatch] = Batch,
+  {FilteredText, EngagementRatio, IsRedacted, SentimentScore} = Params,
+  io:format("BATCH Worker: ~p; Sentiment Score: ~p; Engagement Ratio: ~p; Filtered: ~p Text: "
+                    "~s~n",
+                    [self(), SentimentScore, EngagementRatio, IsRedacted, binary_to_list(FilteredText)]),
+  print_tweets(NewBatch).
+
+```
+
+If the filtered text is different than the original tweet text then it is sent to the batcher along with other params. When the batch size is 5 in this case, it will print all the tweets and reset the batch.
+
 
 ## Bibliography
 
