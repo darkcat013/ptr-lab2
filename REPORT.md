@@ -279,7 +279,73 @@ receive_loop() ->
 
 The kill message is panic and the worker stops when receives it. The supervisor restarts the worker after this.
 
+## Week 3
 
+Supervision Tree Diagram:
+
+![Supervision Tree Diagram](diagrams/week3_sup.png)
+
+Message Flow Diagram:
+
+![Message Flow Diagram](diagrams/week3_msg.png)
+
+### Task 1 -- **Minimal Task**
+
+Continue your Worker actor. Any bad words that a tweet might contain
+mustn’t be printed. Instead, a set of stars should appear, the number of which corresponds to
+the bad word’s length. Consult the Internet for a list of bad words.
+
+```erlang
+-module(profanity_filter).
+
+-export([start/0]).
+
+start() ->
+    BadWordsMap = init_badwords_map(),
+    Pid = spawn_link(fun() -> loop(BadWordsMap) end),
+    register(filter, Pid),
+    {ok, Pid}.
+
+loop(BadWordsMap) ->
+    receive
+        {TweetText, CallerPid} ->
+            FilteredText = match_words(BadWordsMap, TweetText),
+            CallerPid ! {filtered, FilteredText}
+    end,
+    loop(BadWordsMap).
+
+init_badwords_map() ->
+    {ok, Binary} = file:read_file("badwords.txt"),
+    init_badwords_map(#{}, string:split(Binary, "\r\n", all)).
+
+init_badwords_map(Map, []) ->
+    Map;
+init_badwords_map(Map, WordList) ->
+    [Word | NewList] = WordList,
+    init_badwords_map(maps:put(Word, get_asterisks(Word), Map), NewList).
+
+get_asterisks(Word) ->
+    get_asterisks(byte_size(Word), "").
+
+get_asterisks(0, Acc) ->
+    Acc;
+get_asterisks(WordLength, Acc) ->
+    get_asterisks(WordLength - 1, "*" ++ Acc).
+
+match_words(Dictionary, OriginalString) when is_map(Dictionary) ->
+    SplitString = string:split(binary_to_list(OriginalString), " ", all),
+    ResultString =
+        lists:map(fun(Word) ->
+                     case maps:is_key(list_to_binary(Word), Dictionary) of
+                         true -> maps:get(list_to_binary(Word), Dictionary);
+                         false -> Word
+                     end
+                  end,
+                  SplitString),
+    list_to_binary(string:join(ResultString, " ")).
+```
+
+To filter the words, I made an actor that initializes a map of badwords from a txt file named badwords.txt and all the printers send their text to this actor to filter their messages.
 
 ## Bibliography
 
@@ -290,3 +356,5 @@ The kill message is panic and the worker stops when receives it. The supervisor 
 [https://hexdocs.pm/shotgun/shotgun.html](https://hexdocs.pm/shotgun/shotgun.html)
 
 [http://www.plantuml.com/](http://www.plantuml.com/)
+
+[https://github.com/dsojevic/profanity-list/blob/main/en.txt](https://github.com/dsojevic/profanity-list/blob/main/en.txt)

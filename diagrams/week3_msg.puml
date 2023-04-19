@@ -1,0 +1,17 @@
+@startuml
+participant "Docker Container" as DC
+collections "Readers" as R
+participant "Load Balancer" as LB
+participant "Worker Pool Supervisor" as PS
+collections "Worker Printers" as PW
+participant "Profanity Filter" as PF
+participant "Console" as C
+
+DC -> R: SSE with tweet
+R -> LB: Binary tweet
+LB -> PS: Binary tweet and worker nr
+PS -> PW: Binary tweet
+PW -> PF: Tweet text
+PF -> PW: Filtered Tweet text
+PW -> C: Filtered Tweet text
+@enduml
