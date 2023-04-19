@@ -1,0 +1,13 @@
+@startuml
+[week1_sup] as R
+[printer_sup] as PS
+[reader_sup] as RS
+
+R --> RS
+R --> PS
+
+PS--> [printer_worker]
+
+RS --> [reader1]
+RS --> [reader2]
+@enduml

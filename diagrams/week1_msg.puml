@@ -1,0 +1,12 @@
+@startuml
+participant "Docker Container" as DC
+collections "Readers" as R
+participant "Printer Supervisor" as PS
+participant "Printer Worker" as PW
+participant "Console" as C
+
+DC -> R: SSE with tweet
+R -> PS: Binary tweet
+PS-> PW: Binary tweet
+PW-> C: Tweet text
+@enduml
