@@ -1,6 +1,7 @@
 # FAF.PTR16.1 -- Project 1
 
 > **Performed by:** Viorel Noroc, group FAF-203
+
 > **Verified by:** asist. univ. Alexandru Osadcenco
 
 ## General Requirements
@@ -156,7 +157,11 @@ I simulated the load by using a random time for sleep from 5 to 50 ms.
 
 Supervision Tree Diagram:
 
+![Supervision Tree Diagram](diagrams/week2_sup.png)
+
 Message Flow Diagram:
+
+![Message Flow Diagram](diagrams/week2_msg.png)
 
 ### Task 1 -- **Minimal Task**
 
@@ -165,9 +170,52 @@ pool will contain 3 copies of the Printer actor which will be supervised by a Po
 Use the one-for-one restart policy.
 
 ```erlang
-hello_world() ->
-    io:format("Hello PTR\n").
+-module(worker_pool_sup).
+
+-behaviour(supervisor).
+
+-export([start_link/1, send_msg/2]).
+-export([init/1]).
+
+-define(SERVER, ?MODULE).
+
+start_link(WorkersNr) ->
+    {ok, Pid} = supervisor:start_link({local, ?SERVER}, ?MODULE, []),
+    start_workers(WorkersNr),
+    {ok, Pid}.
+
+init([]) ->
+    MaxRestarts = 1000,
+    MaxTime = 10,
+    SupFlags =
+        #{strategy => simple_one_for_one,
+          intensity => MaxRestarts,
+          period => MaxTime},
+
+    ChildSpecs =
+        [#{id => worker_printer,
+           start => {worker_printer, start, []},
+           restart => permanent,
+           shutdown => 2000,
+           type => worker,
+           modules => [worker_printer]}],
+    {ok, {SupFlags, ChildSpecs}}.
+
+send_msg(BinMsg, WorkerNr) ->
+    {_, ChildPid, _, _} = lists:nth(WorkerNr, supervisor:which_children(?MODULE)),
+    ChildPid ! BinMsg.
+
+new_child() ->
+    supervisor:start_child(?MODULE, []).
+
+start_workers(0) -> ok;
+start_workers(WorkersNr) ->
+    new_child(),
+    start_workers(WorkersNr-1).
+
 ```
+
+The printer_sup from previous week was renamed in worker_pool_sup and it starts 3 printer workers.
 
 ### Task 2 -- **Minimal Task**
 
@@ -176,92 +224,62 @@ Any tweet that this actor receives will be sent to the Worker Pool in a Round Ro
 Direct the Reader actor to sent it’s tweets to this actor.
 
 ```erlang
-hello_world() ->
-    io:format("Hello PTR\n").
+-module(load_balancer).
+
+-export([start/1]).
+
+start(WorkersNr) ->
+    Pid = spawn_link(fun() -> balancer_loop(WorkersNr, 1) end),
+    register(balancer, Pid),
+    {ok, Pid}.
+
+%% round robin
+balancer_loop(WorkersNr, CurrentNr) ->
+    receive
+        BinMsg ->
+            worker_pool_sup:send_msg(BinMsg, CurrentNr)
+    end,
+    balancer_loop(WorkersNr, CurrentNr rem 3 + 1).
+
 ```
 
-## Week 3
+This is a simple round robin balancer which is registered and both readers sent their messages to it.
 
-Supervision Tree Diagram:
+### Task 3 -- **Main Task**
 
-Message Flow Diagram:
-
-### Task 1 -- **Minimal Task**
-
-Continue your Worker actor. Any bad words that a tweet might contain
-mustn’t be printed. Instead, a set of stars should appear, the number of which corresponds to
-the bad word’s length. Consult the Internet for a list of bad words.
+Continue your Worker actor. Occasionally, the SSE events will contain a “kill
+message”. Change the actor to crash when such a message is received. Of course, this should
+trigger the supervisor to restart the crashed actor.
 
 ```erlang
-hello_world() ->
-    io:format("Hello PTR\n").
+-module(worker_printer).
+
+-export([start/0]).
+
+start() ->
+    Pid = spawn_link(fun() -> receive_loop() end),
+    {ok, Pid}.
+
+receive_loop() ->
+    receive
+        Message when <<"event: \"message\"">> /= Message ->
+            case string:find(Message, "panic") of
+                nomatch ->
+                    [_, Json] = string:split(Message, ": "),
+                    TweetMap = jsx:decode(Json),
+                    #{<<"message">> := #{<<"tweet">> := #{<<"text">> := TweetText}}} = TweetMap,
+                    io:format("Worker: ~p, Text: ~s~n", [self(), binary_to_list(TweetText)]),
+                    timer:sleep(rand:uniform(45) + 5),
+                    receive_loop();
+                _ ->
+                    io:format("Worker: ~p, Kill message received (panic) ~n", [self()])
+            end
+    end.
 ```
 
-## Week 4
+The kill message is panic and the worker stops when receives it. The supervisor restarts the worker after this.
 
-Supervision Tree Diagram:
 
-Message Flow Diagram:
-
-### Task 1 -- **Minimal Task**
-
-Continue your Worker actor. Besides printing out the redacted tweet text,
-the Worker actor must also calculate two values: the Sentiment Score and the Engagement
-Ratio of the tweet. To compute the Sentiment Score per tweet you should calculate the mean
-of emotional scores of each word in the tweet text. A map that links words with their scores is
-provided as an endpoint in the Docker container. If a word cannot be found in the map, it’s
-emotional score is equal to 0. The Engagement Ratio should be calculated as follows:
-
-$$
-engagement\_ratio = \frac{\#favourites + \#retweets}{\#followers}
-$$
-
-```erlang
-hello_world() ->
-    io:format("Hello PTR\n").
-```
-
-## Week 5
-
-Supervision Tree Diagram:
-
-Message Flow Diagram:
-
-### Task 1 -- **Minimal Task**
-
-Create an actor that would collect the redacted tweets from Workers and
-would print them in batches. Instead of printing the tweets, the Worker should now send them
-to the Batcher, which then prints them. The batch size should be parametrizable.
-
-```erlang
-hello_world() ->
-    io:format("Hello PTR\n").
-```
-
-## Week 6
-
-Supervision Tree Diagram:
-
-Message Flow Diagram:
-
-### Task 1 -- **Minimal Task**
-
-Create a database that would store the tweets processed by your system.
-
-```erlang
-hello_world() ->
-    io:format("Hello PTR\n").
-```
-
-### Task 2 -- **Minimal Task**
-
-Continue your Batcher actor. Instead of printing the batches of tweets, the
-actor should now send them to the database, which will persist them.
-
-```erlang
-hello_world() ->
-    io:format("Hello PTR\n").
-```
 
 ## Bibliography
 
@@ -270,3 +288,5 @@ hello_world() ->
 [https://github.com/inaka/shotgun](https://github.com/inaka/shotgun)
 
 [https://hexdocs.pm/shotgun/shotgun.html](https://hexdocs.pm/shotgun/shotgun.html)
+
+[http://www.plantuml.com/](http://www.plantuml.com/)
